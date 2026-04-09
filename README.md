@@ -97,6 +97,67 @@ with:
 - logging and failure diagnostics
 - local test plan for upgrade scenarios
 
+## Tuna deployment
+
+This updater is intended to be launched from Tuna instead of adding another persistent menu bar item.
+
+### Default Tuna scripts location
+
+Tuna scans:
+
+- `~/Library/Scripts`
+
+So the easiest deployment is a symlink from Tuna's scripts directory to the repo script.
+
+### Deploy via symlink
+
+From this repo, create or refresh the symlink:
+
+```bash
+mkdir -p ~/Library/Scripts
+ln -sfn "$PWD/scripts/update-netbird.ts" ~/Library/Scripts/update-netbird
+```
+
+This repo has already been linked on this machine as:
+
+- `~/Library/Scripts/update-netbird -> /Users/bjesuiter/Develop/bjesuiter/netbird-macos-autoupdater/scripts/update-netbird.ts`
+
+### Why symlink instead of copying
+
+Using a symlink means:
+
+- Tuna always runs the latest checked-out script from this repo
+- edits in the repo are immediately reflected in Tuna
+- there is only one source of truth for the updater
+- agent-driven changes can deploy the script by just refreshing the symlink
+
+### Expected Tuna behavior
+
+Because the script has Tuna metadata headers, it should appear in Tuna as:
+
+- `Update NetBird`
+
+and run as a:
+
+- background script
+
+### Recommended deployment/update workflow
+
+1. pull or edit this repo
+2. run tests:
+
+```bash
+bun test
+```
+
+3. refresh the Tuna symlink:
+
+```bash
+ln -sfn "$PWD/scripts/update-netbird.ts" ~/Library/Scripts/update-netbird
+```
+
+4. run `Update NetBird` from Tuna
+
 ## Status
 
-Repository initialized. README added as the starting project definition.
+Repository initialized, Tuna script scaffolded, updater flow implemented, and Tuna deployment documented.
