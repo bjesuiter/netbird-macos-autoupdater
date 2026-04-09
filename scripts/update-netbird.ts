@@ -27,14 +27,14 @@ const EXPECTED_INSTALLER_FINGERPRINT =
 
 const USER_AGENT = "netbird-macos-autoupdater";
 
-type ReleaseAsset = {
+export type ReleaseAsset = {
   name: string;
   browser_download_url: string;
   size: number;
   content_type?: string;
 };
 
-type GitHubRelease = {
+export type GitHubRelease = {
   tag_name: string;
   name: string;
   html_url: string;
@@ -44,7 +44,7 @@ type GitHubRelease = {
   assets: ReleaseAsset[];
 };
 
-type UpdatePlan = {
+export type UpdatePlan = {
   latestTag: string;
   latestVersion: string;
   releaseUrl: string;
@@ -52,7 +52,7 @@ type UpdatePlan = {
   sourceNotes: string[];
 };
 
-type InstalledState = {
+export type InstalledState = {
   appInstalled: boolean;
   cliInstalled: boolean;
   brewInstalled: boolean;
@@ -61,7 +61,7 @@ type InstalledState = {
   daemonRunning: boolean;
 };
 
-type RunResult = {
+export type RunResult = {
   exitCode: number;
   stdout: string;
   stderr: string;
@@ -93,15 +93,15 @@ function formatBytes(bytes: number): string {
   return `${value.toFixed(unitIndex === 0 ? 0 : 1)} ${units[unitIndex]}`;
 }
 
-function normalizeTag(tag: string): string {
+export function normalizeTag(tag: string): string {
   return tag.startsWith("v") ? tag : `v${tag}`;
 }
 
-function stripLeadingV(value: string): string {
+export function stripLeadingV(value: string): string {
   return value.replace(/^v/i, "").trim();
 }
 
-function normalizeVersion(value: string | null | undefined): string | null {
+export function normalizeVersion(value: string | null | undefined): string | null {
   if (!value) {
     return null;
   }
@@ -125,7 +125,7 @@ function parseVersionParts(value: string): { numeric: number[]; prerelease: stri
   };
 }
 
-function compareVersions(a: string, b: string): number {
+export function compareVersions(a: string, b: string): number {
   const left = parseVersionParts(a);
   const right = parseVersionParts(b);
   const maxLength = Math.max(left.numeric.length, right.numeric.length);
@@ -154,7 +154,7 @@ function compareVersions(a: string, b: string): number {
   return left.prerelease.localeCompare(right.prerelease);
 }
 
-function extractTagFromLocation(location: string): string {
+export function extractTagFromLocation(location: string): string {
   const match = location.match(/\/releases\/tag\/([^/?#]+)/);
 
   if (!match) {
@@ -276,7 +276,7 @@ async function getStableReleasesFromApi(): Promise<GitHubRelease[]> {
   return stableReleases;
 }
 
-function findPkgAsset(release: GitHubRelease): ReleaseAsset {
+export function findPkgAsset(release: GitHubRelease): ReleaseAsset {
   const pkgAssets = release.assets.filter((asset) => asset.name.endsWith(".pkg"));
 
   if (pkgAssets.length === 0) {
@@ -293,12 +293,19 @@ function findPkgAsset(release: GitHubRelease): ReleaseAsset {
   return selectedAsset;
 }
 
-async function buildUpdatePlan(): Promise<UpdatePlan> {
+export async function resolveLatestUpdatePlan(deps: {
+  getLatestTagFromRedirect?: () => Promise<string>;
+  getStableReleasesFromApi?: () => Promise<GitHubRelease[]>;
+  getReleaseByTag?: (tag: string) => Promise<GitHubRelease>;
+} = {}): Promise<UpdatePlan> {
   const sourceNotes: string[] = [];
+  const getLatestTag = deps.getLatestTagFromRedirect ?? getLatestTagFromRedirect;
+  const getStableReleases = deps.getStableReleasesFromApi ?? getStableReleasesFromApi;
+  const fetchReleaseByTag = deps.getReleaseByTag ?? getReleaseByTag;
 
   const [redirectResult, apiReleasesResult] = await Promise.allSettled([
-    getLatestTagFromRedirect(),
-    getStableReleasesFromApi(),
+    getLatestTag(),
+    getStableReleases(),
   ]);
 
   const candidateTags: string[] = [];
@@ -327,10 +334,10 @@ async function buildUpdatePlan(): Promise<UpdatePlan> {
   }
 
   for (const tag of uniqueTags) {
-    const release = await getReleaseByTag(tag);
-    const pkgAsset = release.assets.find((asset) => asset.name.endsWith(".pkg"));
+    const release = await fetchReleaseByTag(tag);
 
-    if (pkgAsset) {
+    try {
+      const pkgAsset = findPkgAsset(release);
       sourceNotes.push(`selected installable release -> ${tag}`);
       return {
         latestTag: release.tag_name,
@@ -339,12 +346,16 @@ async function buildUpdatePlan(): Promise<UpdatePlan> {
         pkgAsset,
         sourceNotes,
       };
+    } catch {
+      sourceNotes.push(`skipped ${tag}: no pkg asset`);
     }
-
-    sourceNotes.push(`skipped ${tag}: no pkg asset`);
   }
 
   throw new Error("No installable NetBird GitHub release with a macOS .pkg asset was found.");
+}
+
+async function buildUpdatePlan(): Promise<UpdatePlan> {
+  return resolveLatestUpdatePlan();
 }
 
 async function isBrewInstalledNetBird(): Promise<boolean> {
@@ -355,10 +366,16 @@ async function isBrewInstalledNetBird(): Promise<boolean> {
   return brew.exitCode === 0;
 }
 
-async function getInstalledVersion(): Promise<string | null> {
-  if (await pathExists(`${APP_PATH}/Contents/Info.plist`)) {
+export async function resolveInstalledVersion(deps: {
+  pathExists?: (path: string) => Promise<boolean>;
+  runCommand?: (args: string[], allowFailure?: boolean) => Promise<RunResult>;
+} = {}): Promise<string | null> {
+  const hasPath = deps.pathExists ?? pathExists;
+  const exec = deps.runCommand ?? runCommand;
+
+  if (await hasPath(`${APP_PATH}/Contents/Info.plist`)) {
     for (const key of [":CFBundleShortVersionString", ":CFBundleVersion"]) {
-      const result = await runCommand(
+      const result = await exec(
         ["/usr/libexec/PlistBuddy", "-c", `Print ${key}`, `${APP_PATH}/Contents/Info.plist`],
         true,
       );
@@ -371,18 +388,18 @@ async function getInstalledVersion(): Promise<string | null> {
   }
 
   for (const binaryPath of [CLI_PATH, APP_BINARY_PATH]) {
-    if (!(await pathExists(binaryPath))) {
+    if (!(await hasPath(binaryPath))) {
       continue;
     }
 
-    const result = await runCommand([binaryPath, "version"], true);
+    const result = await exec([binaryPath, "version"], true);
     const value = normalizeVersion(result.stdout.trim());
     if (result.exitCode === 0 && value) {
       return value;
     }
   }
 
-  const receipt = await runCommand(["/usr/sbin/pkgutil", "--pkg-info", PKG_IDENTIFIER], true);
+  const receipt = await exec(["/usr/sbin/pkgutil", "--pkg-info", PKG_IDENTIFIER], true);
   if (receipt.exitCode === 0) {
     const match = receipt.stdout.match(/version:\s*([^\s]+)/i);
     const value = normalizeVersion(match?.[1]);
@@ -392,6 +409,10 @@ async function getInstalledVersion(): Promise<string | null> {
   }
 
   return null;
+}
+
+async function getInstalledVersion(): Promise<string | null> {
+  return resolveInstalledVersion();
 }
 
 async function isUiRunning(): Promise<boolean> {
@@ -766,8 +787,10 @@ async function main() {
   printStdout(lines.join("\n"));
 }
 
-main().catch(async (error) => {
-  const message = error instanceof Error ? error.message : String(error);
-  printStderr(`Update NetBird failed: ${message}`);
-  process.exit(1);
-});
+if (import.meta.main) {
+  main().catch(async (error) => {
+    const message = error instanceof Error ? error.message : String(error);
+    printStderr(`Update NetBird failed: ${message}`);
+    process.exit(1);
+  });
+}
