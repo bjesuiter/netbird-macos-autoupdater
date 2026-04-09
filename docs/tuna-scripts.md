@@ -1,4 +1,4 @@
-Custom Scripts and Script Directories · Docs · Tuna                                                    
+Custom Scripts and Script Directories · Docs · Tuna
 
 [![Tuna](/assets/tuna-98e4ee34.webp)Tuna](/)
 
