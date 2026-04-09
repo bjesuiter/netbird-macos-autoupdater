@@ -5,6 +5,7 @@
 // @tuna.mode background
 // @tuna.input none
 // @tuna.output text
+// version: 2026-04-09.1
 
 const GITHUB_REPO = "netbirdio/netbird";
 const RELEASES_LATEST_URL = `https://github.com/${GITHUB_REPO}/releases/latest`;
