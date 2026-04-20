@@ -1,11 +1,11 @@
-#!/usr/bin/env bun
+#!/Users/bjesuiter/.bun/bin/bun
 // @tuna.name Update NetBird
 // @tuna.subtitle Download the latest NetBird pkg, install it, and restart NetBird
 // @tuna.icon symbol:arrow.down.app.fill
 // @tuna.mode background
 // @tuna.input none
 // @tuna.output text
-// version: 2026-04-09.1
+// version: 2026-04-09.3
 
 const GITHUB_REPO = "netbirdio/netbird";
 const RELEASES_LATEST_URL = `https://github.com/${GITHUB_REPO}/releases/latest`;
@@ -608,6 +608,20 @@ function printProgress(enabled: boolean, text: string): void {
   }
 }
 
+async function sendMacNotification(
+  message: string,
+  options: { title?: string; subtitle?: string } = {},
+): Promise<void> {
+  const title = options.title ?? "Update NetBird";
+  let command = `display notification ${toAppleScriptString(message)} with title ${toAppleScriptString(title)}`;
+
+  if (options.subtitle) {
+    command += ` subtitle ${toAppleScriptString(options.subtitle)}`;
+  }
+
+  await runCommand(["/usr/bin/osascript", "-e", command], true);
+}
+
 function printHelp() {
   printStdout(`Update NetBird
 
@@ -699,17 +713,30 @@ async function main() {
 
   if (!updateAvailable && !args.force) {
     lines.push("", "NetBird is already up to date. No install was performed.");
+    await sendMacNotification("NetBird is already up to date.", {
+      subtitle: currentVersion ?? plan.latestTag,
+    });
     printStdout(lines.join("\n"));
     return;
   }
 
+  await sendMacNotification("Preparing update…", {
+    subtitle: latestVersion ? `Updating to ${latestVersion}` : plan.latestTag,
+  });
+
   lines.push("", "Downloading pkg...");
   printProgress(args.verbose, `Downloading ${plan.pkgAsset.browser_download_url} ...`);
+  await sendMacNotification("Downloading NetBird package…", {
+    subtitle: plan.pkgAsset.name,
+  });
   const pkgPath = await downloadPkg(plan.pkgAsset);
   lines.push(`Downloaded to: ${pkgPath}`);
 
   lines.push("", "Verifying package signature...");
   printProgress(args.verbose, `Verifying signature for ${pkgPath} ...`);
+  await sendMacNotification("Verifying package signature…", {
+    subtitle: latestVersion ? `NetBird ${latestVersion}` : plan.latestTag,
+  });
   const signatureSummary = await verifyPkg(pkgPath);
   if (args.verbose) {
     lines.push(signatureSummary);
@@ -725,6 +752,9 @@ async function main() {
 
   if (args.downloadOnly) {
     lines.push("", "Download-only mode: package verified but not installed.");
+    await sendMacNotification("Package downloaded and verified.", {
+      subtitle: "Download-only mode",
+    });
     printProgress(args.verbose, "Download-only run completed.");
     printStdout(lines.join("\n"));
     return;
@@ -732,6 +762,9 @@ async function main() {
 
   lines.push("", "Installing pkg (macOS may prompt for your administrator password)...");
   printProgress(args.verbose, "Starting privileged installer...");
+  await sendMacNotification("Installing update…", {
+    subtitle: "macOS may ask for your password",
+  });
   const installOutput = await installPkg(pkgPath);
   if (args.verbose && installOutput) {
     lines.push(installOutput);
@@ -745,6 +778,10 @@ async function main() {
     );
   }
 
+  await sendMacNotification("Waiting for NetBird to restart…", {
+    subtitle: latestVersion ? `Expecting ${latestVersion}` : plan.latestTag,
+  });
+
   let healthy = await waitForHealthyNetBird();
   if (!healthy) {
     lines.push(
@@ -752,6 +789,7 @@ async function main() {
       "Installer completed, but NetBird did not come back up cleanly. Trying restart fallback...",
     );
     printProgress(args.verbose, "Running restart fallback...");
+    await sendMacNotification("Trying NetBird restart fallback…");
     await restartNetBirdFallback();
     healthy = await waitForHealthyNetBird();
   }
@@ -785,12 +823,18 @@ async function main() {
   }
 
   lines.push("", "NetBird update completed successfully.");
+  await sendMacNotification("NetBird update completed successfully.", {
+    subtitle: finalState.currentVersion ?? latestVersion ?? plan.latestTag,
+  });
   printStdout(lines.join("\n"));
 }
 
 if (import.meta.main) {
   main().catch(async (error) => {
     const message = error instanceof Error ? error.message : String(error);
+    await sendMacNotification("NetBird update failed.", {
+      subtitle: message.slice(0, 120),
+    });
     printStderr(`Update NetBird failed: ${message}`);
     process.exit(1);
   });
