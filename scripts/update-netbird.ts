@@ -5,7 +5,7 @@
 // @tuna.mode background
 // @tuna.input none
 // @tuna.output text
-// version: 2026-04-09.3
+// version: 2026-04-20.1
 
 const GITHUB_REPO = "netbirdio/netbird";
 const RELEASES_LATEST_URL = `https://github.com/${GITHUB_REPO}/releases/latest`;
@@ -27,6 +27,8 @@ const EXPECTED_INSTALLER_FINGERPRINT =
   "F162AB76B243200C85027DE31F6C6522342F5B5E594764703F1A61D53FCB92F9";
 
 const USER_AGENT = "netbird-macos-autoupdater";
+const ADMIN_PROMPT =
+  "Update NetBird needs administrator access to install the NetBird package and restart NetBird.";
 
 export type ReleaseAsset = {
   name: string;
@@ -102,7 +104,9 @@ export function stripLeadingV(value: string): string {
   return value.replace(/^v/i, "").trim();
 }
 
-export function normalizeVersion(value: string | null | undefined): string | null {
+export function normalizeVersion(
+  value: string | null | undefined,
+): string | null {
   if (!value) {
     return null;
   }
@@ -111,7 +115,10 @@ export function normalizeVersion(value: string | null | undefined): string | nul
   return normalized.length > 0 ? normalized : null;
 }
 
-function parseVersionParts(value: string): { numeric: number[]; prerelease: string | null } {
+function parseVersionParts(value: string): {
+  numeric: number[];
+  prerelease: string | null;
+} {
   const normalized = stripLeadingV(value);
   const [corePart, prerelease] = normalized.split("-", 2);
   const core = corePart ?? "0";
@@ -159,13 +166,17 @@ export function extractTagFromLocation(location: string): string {
   const match = location.match(/\/releases\/tag\/([^/?#]+)/);
 
   if (!match) {
-    throw new Error(`Could not extract release tag from redirect location: ${location}`);
+    throw new Error(
+      `Could not extract release tag from redirect location: ${location}`,
+    );
   }
 
   const extractedTag = match[1];
 
   if (!extractedTag) {
-    throw new Error(`Could not extract release tag from redirect location: ${location}`);
+    throw new Error(
+      `Could not extract release tag from redirect location: ${location}`,
+    );
   }
 
   return decodeURIComponent(extractedTag);
@@ -180,7 +191,10 @@ async function pathExists(path: string): Promise<boolean> {
   return result.exitCode === 0;
 }
 
-async function runCommand(args: string[], allowFailure = false): Promise<RunResult> {
+async function runCommand(
+  args: string[],
+  allowFailure = false,
+): Promise<RunResult> {
   const proc = Bun.spawn(args, {
     stdout: "pipe",
     stderr: "pipe",
@@ -234,22 +248,29 @@ async function getLatestTagFromRedirect(): Promise<string> {
   const location = response.headers.get("location");
 
   if (!location) {
-    throw new Error(`Expected redirect from ${RELEASES_LATEST_URL}, got status ${response.status}`);
+    throw new Error(
+      `Expected redirect from ${RELEASES_LATEST_URL}, got status ${response.status}`,
+    );
   }
 
   return extractTagFromLocation(location);
 }
 
 async function getReleaseByTag(tag: string): Promise<GitHubRelease> {
-  const response = await fetch(`${RELEASES_API_BASE}/tags/${encodeURIComponent(tag)}`, {
-    headers: {
-      accept: "application/vnd.github+json",
-      "user-agent": USER_AGENT,
+  const response = await fetch(
+    `${RELEASES_API_BASE}/tags/${encodeURIComponent(tag)}`,
+    {
+      headers: {
+        accept: "application/vnd.github+json",
+        "user-agent": USER_AGENT,
+      },
     },
-  });
+  );
 
   if (!response.ok) {
-    throw new Error(`GitHub release lookup failed for ${tag}: HTTP ${response.status}`);
+    throw new Error(
+      `GitHub release lookup failed for ${tag}: HTTP ${response.status}`,
+    );
   }
 
   return (await response.json()) as GitHubRelease;
@@ -268,7 +289,9 @@ async function getStableReleasesFromApi(): Promise<GitHubRelease[]> {
   }
 
   const releases = (await response.json()) as GitHubRelease[];
-  const stableReleases = releases.filter((release) => !release.prerelease && !release.draft);
+  const stableReleases = releases.filter(
+    (release) => !release.prerelease && !release.draft,
+  );
 
   if (stableReleases.length === 0) {
     throw new Error("No stable GitHub release found.");
@@ -278,30 +301,39 @@ async function getStableReleasesFromApi(): Promise<GitHubRelease[]> {
 }
 
 export function findPkgAsset(release: GitHubRelease): ReleaseAsset {
-  const pkgAssets = release.assets.filter((asset) => asset.name.endsWith(".pkg"));
+  const pkgAssets = release.assets.filter((asset) =>
+    asset.name.endsWith(".pkg"),
+  );
 
   if (pkgAssets.length === 0) {
     throw new Error(`No .pkg asset found on release ${release.tag_name}`);
   }
 
   const selectedAsset =
-    pkgAssets.find((asset) => /darwin|mac|netbird/i.test(asset.name)) ?? pkgAssets[0];
+    pkgAssets.find((asset) => /darwin|mac|netbird/i.test(asset.name)) ??
+    pkgAssets[0];
 
   if (!selectedAsset) {
-    throw new Error(`No selectable .pkg asset found on release ${release.tag_name}`);
+    throw new Error(
+      `No selectable .pkg asset found on release ${release.tag_name}`,
+    );
   }
 
   return selectedAsset;
 }
 
-export async function resolveLatestUpdatePlan(deps: {
-  getLatestTagFromRedirect?: () => Promise<string>;
-  getStableReleasesFromApi?: () => Promise<GitHubRelease[]>;
-  getReleaseByTag?: (tag: string) => Promise<GitHubRelease>;
-} = {}): Promise<UpdatePlan> {
+export async function resolveLatestUpdatePlan(
+  deps: {
+    getLatestTagFromRedirect?: () => Promise<string>;
+    getStableReleasesFromApi?: () => Promise<GitHubRelease[]>;
+    getReleaseByTag?: (tag: string) => Promise<GitHubRelease>;
+  } = {},
+): Promise<UpdatePlan> {
   const sourceNotes: string[] = [];
-  const getLatestTag = deps.getLatestTagFromRedirect ?? getLatestTagFromRedirect;
-  const getStableReleases = deps.getStableReleasesFromApi ?? getStableReleasesFromApi;
+  const getLatestTag =
+    deps.getLatestTagFromRedirect ?? getLatestTagFromRedirect;
+  const getStableReleases =
+    deps.getStableReleasesFromApi ?? getStableReleasesFromApi;
   const fetchReleaseByTag = deps.getReleaseByTag ?? getReleaseByTag;
 
   const [redirectResult, apiReleasesResult] = await Promise.allSettled([
@@ -319,11 +351,17 @@ export async function resolveLatestUpdatePlan(deps: {
   }
 
   if (apiReleasesResult.status === "fulfilled") {
-    const apiTags = apiReleasesResult.value.map((release) => normalizeTag(release.tag_name));
-    sourceNotes.push(`api stable releases -> ${apiTags.slice(0, 5).join(", ")}`);
+    const apiTags = apiReleasesResult.value.map((release) =>
+      normalizeTag(release.tag_name),
+    );
+    sourceNotes.push(
+      `api stable releases -> ${apiTags.slice(0, 5).join(", ")}`,
+    );
     candidateTags.push(...apiTags);
   } else {
-    sourceNotes.push(`api stable releases lookup failed: ${apiReleasesResult.reason}`);
+    sourceNotes.push(
+      `api stable releases lookup failed: ${apiReleasesResult.reason}`,
+    );
   }
 
   const uniqueTags = [...new Set(candidateTags)].sort((left, right) =>
@@ -331,7 +369,9 @@ export async function resolveLatestUpdatePlan(deps: {
   );
 
   if (uniqueTags.length === 0) {
-    throw new Error("Could not determine the latest NetBird release from GitHub.");
+    throw new Error(
+      "Could not determine the latest NetBird release from GitHub.",
+    );
   }
 
   for (const tag of uniqueTags) {
@@ -352,7 +392,9 @@ export async function resolveLatestUpdatePlan(deps: {
     }
   }
 
-  throw new Error("No installable NetBird GitHub release with a macOS .pkg asset was found.");
+  throw new Error(
+    "No installable NetBird GitHub release with a macOS .pkg asset was found.",
+  );
 }
 
 async function buildUpdatePlan(): Promise<UpdatePlan> {
@@ -361,23 +403,34 @@ async function buildUpdatePlan(): Promise<UpdatePlan> {
 
 async function isBrewInstalledNetBird(): Promise<boolean> {
   const brew = await runCommand(
-    ["/bin/sh", "-lc", "command -v brew >/dev/null 2>&1 && brew list --formula | grep -qx netbird"],
+    [
+      "/bin/sh",
+      "-lc",
+      "command -v brew >/dev/null 2>&1 && brew list --formula | grep -qx netbird",
+    ],
     true,
   );
   return brew.exitCode === 0;
 }
 
-export async function resolveInstalledVersion(deps: {
-  pathExists?: (path: string) => Promise<boolean>;
-  runCommand?: (args: string[], allowFailure?: boolean) => Promise<RunResult>;
-} = {}): Promise<string | null> {
+export async function resolveInstalledVersion(
+  deps: {
+    pathExists?: (path: string) => Promise<boolean>;
+    runCommand?: (args: string[], allowFailure?: boolean) => Promise<RunResult>;
+  } = {},
+): Promise<string | null> {
   const hasPath = deps.pathExists ?? pathExists;
   const exec = deps.runCommand ?? runCommand;
 
   if (await hasPath(`${APP_PATH}/Contents/Info.plist`)) {
     for (const key of [":CFBundleShortVersionString", ":CFBundleVersion"]) {
       const result = await exec(
-        ["/usr/libexec/PlistBuddy", "-c", `Print ${key}`, `${APP_PATH}/Contents/Info.plist`],
+        [
+          "/usr/libexec/PlistBuddy",
+          "-c",
+          `Print ${key}`,
+          `${APP_PATH}/Contents/Info.plist`,
+        ],
         true,
       );
 
@@ -400,7 +453,10 @@ export async function resolveInstalledVersion(deps: {
     }
   }
 
-  const receipt = await exec(["/usr/sbin/pkgutil", "--pkg-info", PKG_IDENTIFIER], true);
+  const receipt = await exec(
+    ["/usr/sbin/pkgutil", "--pkg-info", PKG_IDENTIFIER],
+    true,
+  );
   if (receipt.exitCode === 0) {
     const match = receipt.stdout.match(/version:\s*([^\s]+)/i);
     const value = normalizeVersion(match?.[1]);
@@ -417,25 +473,37 @@ async function getInstalledVersion(): Promise<string | null> {
 }
 
 async function isUiRunning(): Promise<boolean> {
-  const result = await runCommand(["/usr/bin/pgrep", "-x", APP_UI_BINARY_NAME], true);
+  const result = await runCommand(
+    ["/usr/bin/pgrep", "-x", APP_UI_BINARY_NAME],
+    true,
+  );
   return result.exitCode === 0;
 }
 
 async function isDaemonRunning(): Promise<boolean> {
-  const result = await runCommand(["/usr/bin/pgrep", "-f", "netbird.*service run"], true);
+  const result = await runCommand(
+    ["/usr/bin/pgrep", "-f", "netbird.*service run"],
+    true,
+  );
   return result.exitCode === 0;
 }
 
 async function getInstalledState(): Promise<InstalledState> {
-  const [appInstalled, cliInstalled, brewInstalled, currentVersion, uiRunning, daemonRunning] =
-    await Promise.all([
-      pathExists(APP_PATH),
-      pathExists(CLI_PATH),
-      isBrewInstalledNetBird(),
-      getInstalledVersion(),
-      isUiRunning(),
-      isDaemonRunning(),
-    ]);
+  const [
+    appInstalled,
+    cliInstalled,
+    brewInstalled,
+    currentVersion,
+    uiRunning,
+    daemonRunning,
+  ] = await Promise.all([
+    pathExists(APP_PATH),
+    pathExists(CLI_PATH),
+    isBrewInstalledNetBird(),
+    getInstalledVersion(),
+    isUiRunning(),
+    isDaemonRunning(),
+  ]);
 
   return {
     appInstalled,
@@ -463,7 +531,9 @@ async function downloadPkg(asset: ReleaseAsset): Promise<string> {
   });
 
   if (!response.ok) {
-    throw new Error(`Failed to download ${asset.browser_download_url}: HTTP ${response.status}`);
+    throw new Error(
+      `Failed to download ${asset.browser_download_url}: HTTP ${response.status}`,
+    );
   }
 
   const buffer = await response.arrayBuffer();
@@ -473,7 +543,11 @@ async function downloadPkg(asset: ReleaseAsset): Promise<string> {
 }
 
 async function verifyPkg(pkgPath: string): Promise<string> {
-  const result = await runCommand(["/usr/sbin/pkgutil", "--check-signature", pkgPath]);
+  const result = await runCommand([
+    "/usr/sbin/pkgutil",
+    "--check-signature",
+    pkgPath,
+  ]);
   const rendered = `${result.stdout}${result.stderr}`.trim();
 
   if (!rendered.includes("trusted by the Apple notary service")) {
@@ -486,7 +560,9 @@ async function verifyPkg(pkgPath: string): Promise<string> {
     );
   }
 
-  const normalizedSignatureOutput = rendered.replace(/[^A-Fa-f0-9]/g, "").toUpperCase();
+  const normalizedSignatureOutput = rendered
+    .replace(/[^A-Fa-f0-9]/g, "")
+    .toUpperCase();
   if (!normalizedSignatureOutput.includes(EXPECTED_INSTALLER_FINGERPRINT)) {
     throw new Error(
       "Package signer fingerprint did not match the expected NetBird Developer ID Installer certificate.",
@@ -504,7 +580,7 @@ async function installPkg(pkgPath: string): Promise<string> {
   } else {
     const appleScript = [
       `set shellCommand to ${toAppleScriptString(shellCommand)}`,
-      "do shell script shellCommand with administrator privileges",
+      `do shell script shellCommand with administrator privileges with prompt ${toAppleScriptString(ADMIN_PROMPT)}`,
     ];
 
     const result = await runCommand(
@@ -515,7 +591,9 @@ async function installPkg(pkgPath: string): Promise<string> {
     if (result.exitCode !== 0) {
       const combined = `${result.stdout}${result.stderr}`;
       if (/User canceled/i.test(combined)) {
-        throw new Error("Installation canceled at the macOS administrator prompt.");
+        throw new Error(
+          "Installation canceled at the macOS administrator prompt.",
+        );
       }
 
       const installerLog = await tailLog(INSTALLER_LOG, 50);
@@ -554,20 +632,27 @@ async function restartNetBirdFallback(): Promise<void> {
   } else {
     const appleScript = [
       `set shellCommand to ${toAppleScriptString(`${binaryPath} service install || true; ${binaryPath} service start || true 2>&1`)}`,
-      "do shell script shellCommand with administrator privileges",
+      `do shell script shellCommand with administrator privileges with prompt ${toAppleScriptString("Update NetBird needs administrator access to restart the NetBird background service.")}`,
     ];
 
-    await runCommand(["/usr/bin/osascript", ...appleScript.flatMap((line) => ["-e", line])], true);
+    await runCommand(
+      ["/usr/bin/osascript", ...appleScript.flatMap((line) => ["-e", line])],
+      true,
+    );
   }
 
   await openNetBirdApp();
 }
 
-async function waitForInstalledVersion(expectedVersion: string): Promise<boolean> {
+async function waitForInstalledVersion(
+  expectedVersion: string,
+): Promise<boolean> {
   return waitFor(
     async () => {
       const current = await getInstalledVersion();
-      return current !== null && compareVersions(current, expectedVersion) === 0;
+      return (
+        current !== null && compareVersions(current, expectedVersion) === 0
+      );
     },
     60_000,
     1_500,
@@ -577,7 +662,10 @@ async function waitForInstalledVersion(expectedVersion: string): Promise<boolean
 async function waitForHealthyNetBird(): Promise<boolean> {
   return waitFor(
     async () => {
-      const [uiRunning, daemonRunning] = await Promise.all([isUiRunning(), isDaemonRunning()]);
+      const [uiRunning, daemonRunning] = await Promise.all([
+        isUiRunning(),
+        isDaemonRunning(),
+      ]);
       return uiRunning && daemonRunning;
     },
     45_000,
@@ -590,7 +678,10 @@ async function tailLog(path: string, lines = 20): Promise<string | null> {
     return null;
   }
 
-  const result = await runCommand(["/usr/bin/tail", "-n", String(lines), path], true);
+  const result = await runCommand(
+    ["/usr/bin/tail", "-n", String(lines), path],
+    true,
+  );
   return result.exitCode === 0 ? result.stdout.trim() : null;
 }
 
@@ -649,8 +740,14 @@ async function main() {
     return;
   }
 
-  printProgress(args.verbose, "Resolving latest release and installed state...");
-  const [plan, installed] = await Promise.all([buildUpdatePlan(), getInstalledState()]);
+  printProgress(
+    args.verbose,
+    "Resolving latest release and installed state...",
+  );
+  const [plan, installed] = await Promise.all([
+    buildUpdatePlan(),
+    getInstalledState(),
+  ]);
   const currentVersion = normalizeVersion(installed.currentVersion);
   const latestVersion = normalizeVersion(plan.latestVersion);
   const updateAvailable =
@@ -725,7 +822,10 @@ async function main() {
   });
 
   lines.push("", "Downloading pkg...");
-  printProgress(args.verbose, `Downloading ${plan.pkgAsset.browser_download_url} ...`);
+  printProgress(
+    args.verbose,
+    `Downloading ${plan.pkgAsset.browser_download_url} ...`,
+  );
   await sendMacNotification("Downloading NetBird package…", {
     subtitle: plan.pkgAsset.name,
   });
@@ -760,7 +860,10 @@ async function main() {
     return;
   }
 
-  lines.push("", "Installing pkg (macOS may prompt for your administrator password)...");
+  lines.push(
+    "",
+    "Installing pkg (macOS may prompt for your administrator password)...",
+  );
   printProgress(args.verbose, "Starting privileged installer...");
   await sendMacNotification("Installing update…", {
     subtitle: "macOS may ask for your password",
@@ -771,7 +874,9 @@ async function main() {
   }
 
   const versionUpdated =
-    latestVersion !== null ? await waitForInstalledVersion(latestVersion) : true;
+    latestVersion !== null
+      ? await waitForInstalledVersion(latestVersion)
+      : true;
   if (!versionUpdated && latestVersion !== null) {
     throw new Error(
       `Installation completed but NetBird did not report version ${latestVersion} within the expected time.`,
