@@ -107,29 +107,27 @@ Tuna scans:
 
 - `~/Library/Scripts`
 
-So the easiest deployment is a symlink from Tuna's scripts directory to the repo script.
+### Deploy by copying the script
 
-### Deploy via symlink
-
-From this repo, create or refresh the symlink:
+Copy the repo script into Tuna's scripts directory:
 
 ```bash
 mkdir -p ~/Library/Scripts
-ln -sfn "$PWD/scripts/update-netbird.ts" ~/Library/Scripts/update-netbird
+cp "$PWD/scripts/update-netbird.ts" ~/Library/Scripts/update-netbird
+chmod +x ~/Library/Scripts/update-netbird
 ```
 
-This repo has already been linked on this machine as:
+This repo is currently deployed on this machine as:
 
-- `~/Library/Scripts/update-netbird -> /Users/bjesuiter/Develop/bjesuiter/netbird-macos-autoupdater/scripts/update-netbird.ts`
+- `~/Library/Scripts/update-netbird`
 
-### Why symlink instead of copying
+### Why copy instead of symlink
 
-Using a symlink means:
+Symlinks did not appear to behave reliably for this Tuna setup, so deployment uses a real copied script file instead.
 
-- Tuna always runs the latest checked-out script from this repo
-- edits in the repo are immediately reflected in Tuna
-- there is only one source of truth for the updater
-- agent-driven changes can deploy the script by just refreshing the symlink
+That makes Tuna read a normal executable script at its default scripts location.
+
+Because deployment is now copy-based, remember to refresh the copied file after changes in this repo.
 
 ### Expected Tuna behavior
 
@@ -150,10 +148,11 @@ and run as a:
 bun test
 ```
 
-3. refresh the Tuna symlink:
+3. copy the current script into Tuna's scripts directory:
 
 ```bash
-ln -sfn "$PWD/scripts/update-netbird.ts" ~/Library/Scripts/update-netbird
+cp "$PWD/scripts/update-netbird.ts" ~/Library/Scripts/update-netbird
+chmod +x ~/Library/Scripts/update-netbird
 ```
 
 4. run `Update NetBird` from Tuna
